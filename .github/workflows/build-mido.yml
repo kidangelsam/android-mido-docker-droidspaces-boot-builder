@@ -80,7 +80,7 @@ jobs:
           cp -f devices/mido/artifacts/boot-docker.img "$patch_dir/boot.img"
           cp -f "$RUNNER_TEMP/$MAGISK_APK_NAME" "$patch_dir/magisk.apk"
           cd "$patch_dir"
-          unzip -oj magisk.apk 'assets/boot_patch.sh' 'assets/util_functions.sh' 'assets/stub.apk'
+          unzip -oj magisk.apk 'assets/boot_patch.sh' 'assets/util_functions.sh'
           unzip -oj magisk.apk 'lib/x86_64/libmagiskboot.so' -d host
           unzip -oj magisk.apk \
             'lib/arm64-v8a/libmagisk.so' \
