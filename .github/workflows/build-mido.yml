@@ -9,8 +9,8 @@ permissions:
 env:
   BOOT_SOURCE_URL: https://sourceforge.net/projects/kamisroms/files/Mido/Crdroid/A15/crDroidAndroid-15.0-20260531-mido-v11.16.zip/download
   BOOT_SOURCE_SHA256: E6DFF82977C04093379EB74FCBCD2891D0E6678CE4E54C13FDE2B773D6781CC3
-  KERNEL_REPO: https://github.com/imren0x/msm-4.19.git
-  KERNEL_REF: mi8953/latest
+  KERNEL_REPO: https://github.com/NRanjan-17/kernel_xiaomi_mido.git
+  KERNEL_REF: sixteen
   RELEASE_TAG: mido-crdroid-15-20260531-docker-droidspaces-audio-boot
   RELEASE_BASE: mido-crDroidAndroid-15.0-20260531-docker-droidspaces-audio-boot
   MAGISK_LATEST_URL: https://github.com/topjohnwu/Magisk/releases/latest
