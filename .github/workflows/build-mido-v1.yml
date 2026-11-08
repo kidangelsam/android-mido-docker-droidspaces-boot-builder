@@ -75,7 +75,7 @@ jobs:
           
           out = root / "devices/mido/release"
           
-          
+          rom_name = f"crDroidAndroid-15.0-20260531-mido-v11.16-docker-droidspaces-audio-anland.zip"
           dst = out / rom_name
           if not src.exists():
               raise SystemExit("original ROM zip is required to build the integrated flashable ROM")
