@@ -1,0 +1,147 @@
+name: Build mido Docker Droidspaces audio boot
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BOOT_SOURCE_URL: https://sourceforge.net/projects/kamisroms/files/Mido/Crdroid/A15/crDroidAndroid-15.0-20260531-mido-v11.16.zip/download
+  BOOT_SOURCE_SHA256: E6DFF82977C04093379EB74FCBCD2891D0E6678CE4E54C13FDE2B773D6781CC3
+  KERNEL_REPO: https://github.com/kidangelsam/android_kernel_xiaomi_mido.git
+  KERNEL_REF: lineage-22.2
+  RELEASE_TAG: mido-crdroid-15-20260531-docker-droidspaces-audio-boot
+  RELEASE_BASE: mido-crDroidAndroid-15.0-20260531-docker-droidspaces-audio-boot
+  MAGISK_LATEST_URL: https://github.com/topjohnwu/Magisk/releases/latest
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install boot tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl file unzip
+
+      - name: Download matching mido boot source
+        run: |
+          mkdir -p devices/mido/base
+          tmp_source="$(mktemp)"
+          curl -L --fail --retry 5 --retry-delay 5 -o "$tmp_source" "$BOOT_SOURCE_URL"
+          printf '%s  %s\n' "$BOOT_SOURCE_SHA256" "$tmp_source" | sha256sum -c -
+          if unzip -l "$tmp_source" boot.img >/dev/null 2>&1; then
+            cp -f "$tmp_source" devices/mido/base/original-rom.zip
+            unzip -p "$tmp_source" boot.img > devices/mido/base/boot-current.img
+          else
+            cp -f "$tmp_source" devices/mido/base/boot-current.img
+          fi
+          file devices/mido/base/boot-current.img
+          sha256sum devices/mido/base/boot-current.img
+
+      - name: Build mido kernel
+        run: |
+          chmod +x devices/mido/scripts/build-mido-docker-kernel.sh
+          devices/mido/scripts/build-mido-docker-kernel.sh
+
+      - name: Repack boot
+        run: |
+          chmod +x scripts/repack-boot.sh
+          scripts/repack-boot.sh \
+            devices/mido/base/boot-current.img \
+            devices/mido/artifacts/Image.gz-dtb \
+            devices/mido/artifacts/boot-docker.img
+
+      - name: Write release files
+        run: |
+          out=devices/mido/release
+          mkdir -p "$out"
+          cp -f devices/mido/artifacts/boot-docker.img "$out/$RELEASE_BASE.img"
+          (cd "$out" && sha256sum "$RELEASE_BASE.img" > "$RELEASE_BASE.img.sha256")
+          
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import zipfile
+
+          root = pathlib.Path.cwd()
+          src = root / "devices/mido/base/original-rom.zip"
+          
+          out = root / "devices/mido/release"
+          
+          
+          dst = out / rom_name
+          if not src.exists():
+              raise SystemExit("original ROM zip is required to build the integrated flashable ROM")
+          boot_bytes = boot.read_bytes()
+          stored_entries = {"META-INF/com/android/metadata", "META-INF/com/android/metadata.pb"}
+          with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(dst, "w", allowZip64=True) as zout:
+              for info in zin.infolist():
+                  data = boot_bytes if info.filename == "boot.img" else zin.read(info.filename)
+                  zi = zipfile.ZipInfo(info.filename, info.date_time)
+                  zi.compress_type = zipfile.ZIP_STORED if info.filename in stored_entries else info.compress_type
+                  zi.comment = info.comment
+                  zi.extra = b""
+                  zi.internal_attr = info.internal_attr
+                  zi.external_attr = info.external_attr
+                  zi.create_system = info.create_system
+                  zout.writestr(zi, data)
+          digest = hashlib.sha256(dst.read_bytes()).hexdigest()
+          (out / f"{rom_name}.sha256").write_text(f"{digest}  {rom_name}\n", encoding="utf-8")
+          offsets = []
+          with zipfile.ZipFile(dst, "r") as z:
+              for name in ("META-INF/com/android/metadata", "META-INF/com/android/metadata.pb", "boot.img"):
+                  info = z.getinfo(name)
+                  offset = info.header_offset + 30 + len(info.filename.encode("utf-8")) + len(info.extra)
+                  offsets.append(f"{name}={offset}:{info.file_size}")
+          (out / "integrated-rom-offsets.txt").write_text("\n".join(offsets) + "\n", encoding="utf-8")
+          print(f"integrated_rom={rom_name}")
+          print(f"integrated_rom_sha256={digest}")
+          PY
+          
+          integrated_rom_sha256="$(cut -d ' ' -f 1 "$out/$integrated_rom.sha256")"
+          {
+            echo "device=mido"
+            echo "rom=crDroidAndroid-15.0-20260531-mido-v11.16.zip"
+            echo "boot_source_url=$BOOT_SOURCE_URL"
+            echo "github_sha=$GITHUB_SHA"
+            echo "github_run_id=$GITHUB_RUN_ID"
+            echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "kernel_repo=$KERNEL_REPO"
+            echo "kernel_ref=$KERNEL_REF"
+            echo "upstream_commit=$(cat devices/mido/artifacts/upstream-commit)"
+            echo "kernel_release=$(cat devices/mido/artifacts/kernel-release)"
+            echo "boot_sha256=$(cut -d ' ' -f 1 devices/mido/artifacts/boot-docker.img.sha256)"
+            
+            echo "integrated_rom=$integrated_rom"
+            echo "integrated_rom_sha256=$integrated_rom_sha256"
+          } > "$out/$RELEASE_BASE.manifest.env"
+          {
+            echo "mido Docker / Droidspaces / ALSA loopback boot image."
+            echo
+            echo "Kernel includes Docker / Droidspaces container support and CONFIG_SND_ALOOP=y."
+            echo
+            echo "ROM/vendor still must expose loopback capture through Audio HAL and audio policy as an input profile/device. Kernel-only loopback is not enough for WeChat / AudioRecord."
+          } > "$out/RELEASE_NOTES.md"
+          find "$out" -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+
+      - name: Publish stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="mido crDroid 15 Docker Droidspaces audio boot"
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" \
+            "devices/mido/release/$RELEASE_BASE.img" \
+            "devices/mido/release/$RELEASE_BASE.img.sha256" \
+            "devices/mido/release/$RELEASE_BASE.manifest.env" \
+            "devices/mido/release/integrated-rom-offsets.txt" \
+            --title "$title" \
+            --notes-file devices/mido/release/RELEASE_NOTES.md \
+            --latest
