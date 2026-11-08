@@ -74,7 +74,7 @@ jobs:
           src = root / "devices/mido/base/original-rom.zip"
           
           out = root / "devices/mido/release"
-          
+          boot = root / "devices/mido/artifacts/boot-docker-magisk.img"
           rom_name = f"crDroidAndroid-15.0-20260531-mido-v11.16-docker-droidspaces-audio-anland.zip"
           dst = out / rom_name
           if not src.exists():
