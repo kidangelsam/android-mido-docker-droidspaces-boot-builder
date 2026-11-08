@@ -144,7 +144,7 @@ log "Pin required container and virtual-audio options"
   --enable POSIX_MQUEUE \
   --enable IPC_NS \
   --enable PID_NS \
-  --disable USER_NS \
+  --enable USER_NS \
   --enable CGROUP_PIDS \
   --enable CGROUP_DEVICE \
   --enable CFS_BANDWIDTH \
